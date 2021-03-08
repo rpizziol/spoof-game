@@ -1,19 +1,47 @@
 package main
 
-import "math/rand"
+import (
+	"fmt"
+	"math/rand"
+	"strconv"
+)
 
 type Player struct {
 	initiator              bool
 	position, coins, guess int
 }
 
-func guessCoins(myCoins int, guesses []int) int {
-	// TODO use 'guesses' to remove elements already in use
+func isInList(list []int, elem int) bool {
+	for _, a := range list {
+		if a == elem {
+			return true
+		}
+	}
+	return false
+}
+
+func (player Player) guessCoins(myCoins int, guesses []int) int {
+	//	fmt.Printf("Inside guessCoins %v\n", guesses)
 	maxTable := maxCoins*(numberOfPlayers-1) + myCoins
 	minTable := minCoins*(numberOfPlayers-1) + myCoins
-	return rand.Intn(maxTable-minTable) + minTable
+	for {
+		index := rand.Intn(maxTable-minTable) + minTable
+		if !isInList(guesses, index) {
+			return index
+		} else {
+			fmt.Printf("Player %d: %d is already in the list\n", player.position, index)
+		}
+	}
 }
 
 func drawCoins() int {
 	return rand.Intn(maxCoins-minCoins) + minCoins
+}
+
+func (player Player) printPlayer() string {
+	var output = "Player " + strconv.Itoa(player.position) + ": picked " + strconv.Itoa(player.coins) + " coins"
+	if player.initiator {
+		output += " <- initiator"
+	}
+	return output
 }
