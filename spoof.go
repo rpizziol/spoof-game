@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"spoof-game/learning-go/util"
 	"time"
 )
 
@@ -19,13 +18,15 @@ one player is left. This player is who buys the drinks. Every time a round is pl
 player to guess a number rotates clockwise to the next available player.*/
 
 const numberOfPlayers = 10
-const maxCoins = 4 // Maximum number of coins per player + 1 (default: 3)
+const maxCoins = 3 // Maximum number of coins per player (default: 3)
 const minCoins = 0
+
+// TODO close channels //close(channel[position])
 
 func routineJob(position int, channel []chan []int, guesses []int) {
 	// Initialize
 	player := Player{id: position, initiator: position == 0, position: position, coins: drawCoins()}
-	fmt.Println(player.printPlayer())
+	player.printPlayer()
 
 	if player.initiator {
 		player.guess = player.guessCoins(player.coins, guesses, player.position)
@@ -34,39 +35,35 @@ func routineJob(position int, channel []chan []int, guesses []int) {
 		guesses[len(guesses)-1] = player.coins
 		// Pass array of guesses to the next player
 		channel[position] <- guesses
-		//close(channel[position])
 		guesses := <-channel[(position+numberOfPlayers-1)%numberOfPlayers]
-		fmt.Printf("Player %d (pos %d): %v\n", player.id, player.position, guesses)
+		player.talk(fmt.Sprintf("%v received", guesses))
 		// Guesses round is over
-		var winner = findWinner(guesses)
-		fmt.Printf("Player %d (pos %d): the winner is Player %d\n", player.id, player.position, winner)
+		var winner = player.findWinner(guesses)
+		if player.position == winner {
+			player.talk("I am the winner!")
+			// TODO exitRing()
+		} else {
+			player.talk(fmt.Sprintf("the winner is Player in position %d", winner))
+			// Send winner to all players
+			winArray := []int{winner}
+			for i := range channel {
+				channel[i] <- winArray
+			}
+		}
 	} else {
 		// Wait for message on the receiving channel
 		guesses := <-channel[(position+numberOfPlayers-1)%numberOfPlayers]
-		fmt.Printf("Player %d (pos %d): %v received\n", player.id, player.position, guesses)
+		player.talk(fmt.Sprintf("%v received", guesses))
 		// Send guesses array on the sending channel
 		player.guess = player.guessCoins(player.coins, guesses, player.position)
 		guesses[position] = player.guess
 		// Update the overall value of coins on the table
 		guesses[len(guesses)-1] += player.coins
 		channel[position] <- guesses
+		winArray := <-channel[(position+numberOfPlayers-1)%numberOfPlayers]
+		winner := winArray[0]
+		player.talk(fmt.Sprintf("%d received (winner)", winner))
 	}
-}
-
-func findWinner(guesses []int) int {
-	fmt.Printf("guesses: %v\n", guesses)
-	var distance = make([]int, numberOfPlayers)
-	for i := 0; i < numberOfPlayers; i++ {
-		distance[i] = util.Abs(guesses[len(guesses)-1] - guesses[i])
-	}
-	fmt.Printf("distance: %v\n", distance)
-	var winner = 0
-	for i := 0; i < numberOfPlayers; i++ {
-		if distance[i] < distance[winner] {
-			winner = i
-		}
-	}
-	return winner
 }
 
 func main() {

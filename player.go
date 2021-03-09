@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"strconv"
+	"spoof-game/util"
 )
 
 type Player struct {
@@ -33,15 +33,35 @@ func (player Player) guessCoins(myCoins int, guesses []int, position int) int {
 	}
 }
 
-func drawCoins() int {
-	return rand.Intn(maxCoins-minCoins) + minCoins
+func (player Player) talk(text string) {
+	outString := fmt.Sprintf("Player %d (pos %d): %s", player.id, player.position, text)
+	if player.initiator {
+		outString += " <- initiator"
+	}
+	outString += "\n"
+	fmt.Printf(outString)
 }
 
-func (player Player) printPlayer() string {
-	var output = "Player " + strconv.Itoa(player.id) + " (pos " + strconv.Itoa(player.position) + "): picked " +
-		strconv.Itoa(player.coins) + " coins"
-	if player.initiator {
-		output += " <- initiator"
+func drawCoins() int {
+	return rand.Intn(maxCoins+1-minCoins) + minCoins
+}
+
+func (player Player) printPlayer() {
+	player.talk(fmt.Sprintf("picked %d coins", player.coins))
+}
+
+func (player Player) findWinner(guesses []int) int {
+	player.talk(fmt.Sprintf("guesses = %v", guesses))
+	var distance = make([]int, numberOfPlayers)
+	for i := 0; i < numberOfPlayers; i++ {
+		distance[i] = util.Abs(guesses[len(guesses)-1] - guesses[i])
 	}
-	return output
+	player.talk(fmt.Sprintf("distance = %v", distance))
+	var winner = 0
+	for i := 0; i < numberOfPlayers; i++ {
+		if distance[i] < distance[winner] {
+			winner = i
+		}
+	}
+	return winner
 }
