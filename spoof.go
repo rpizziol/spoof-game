@@ -17,11 +17,11 @@ closest number wins the round and exists the game. The others will play more rou
 one player is left. This player is who buys the drinks. Every time a round is played the first
 player to guess a number rotates clockwise to the next available player.*/
 
-const numberOfPlayers = 10
+const numberOfPlayers = 5
 const maxCoins = 4 // Maximum number of coins per player + 1 (default: 3)
 const minCoins = 0
 
-func threadJob(position int, channel []chan []int, guesses []int) {
+func routineJob(position int, channel []chan []int, guesses []int) {
 	// Initialize
 	myCoins := drawCoins()
 	player := Player{initiator: position == 0, position: position, coins: myCoins}
@@ -30,20 +30,22 @@ func threadJob(position int, channel []chan []int, guesses []int) {
 	if player.initiator {
 		player.guess = player.guessCoins(myCoins, guesses)
 		guesses[position] = player.guess
+		// Update the overall value of coins on the table
+		guesses[len(guesses)-1] = myCoins
 		// Pass array of guesses to the next player
 		channel[position] <- guesses
 		//close(channel[position])
 		guesses := <-channel[(position+numberOfPlayers-1)%numberOfPlayers]
-		//guesses = msg
 		fmt.Printf("Player %d: %v\n", player.position, guesses)
 	} else {
 		// Wait for message on the receiving channel
 		guesses := <-channel[(position+numberOfPlayers-1)%numberOfPlayers]
-		//guesses = msg
-		fmt.Printf("Player %d: %v\n", player.position, guesses)
+		fmt.Printf("Player %d: %v received\n", player.position, guesses)
 		// Send guesses array on the sending channel
 		player.guess = player.guessCoins(myCoins, guesses)
 		guesses[position] = player.guess
+		// Update the overall value of coins on the table
+		guesses[len(guesses)-1] += myCoins
 		channel[position] <- guesses
 	}
 
@@ -72,9 +74,14 @@ func main() {
 	for i := range channel {
 		channel[i] = make(chan []int)
 	}
-	var guesses = make([]int, numberOfPlayers)
+
+	// The element passed between players
+	// (NB The last place is reserved to the real value, updated by each player)
+	var guesses = make([]int, numberOfPlayers+1)
+
+	// Initialize a routine for each player
 	for i := 0; i < numberOfPlayers; i++ {
-		go threadJob(i, channel, guesses)
+		go routineJob(i, channel, guesses)
 	}
 	fmt.Scanln()
 	//fmt.Println(guesses)

@@ -26,7 +26,7 @@ func (player Player) guessCoins(myCoins int, guesses []int) int {
 	minTable := minCoins*(numberOfPlayers-1) + myCoins
 	for {
 		index := rand.Intn(maxTable-minTable) + minTable
-		if !isInList(guesses, index) {
+		if !isInList(guesses[:len(guesses)-1], index) {
 			return index
 		} else {
 			fmt.Printf("Player %d: %d is already in the list\n", player.position, index)
