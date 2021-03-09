@@ -18,17 +18,17 @@ closest number wins the round and exists the game. The others will play more rou
 one player is left. This player is who buys the drinks. Every time a round is played the first
 player to guess a number rotates clockwise to the next available player.*/
 
-const numberOfPlayers = 5
+const numberOfPlayers = 10
 const maxCoins = 4 // Maximum number of coins per player + 1 (default: 3)
 const minCoins = 0
 
 func routineJob(position int, channel []chan []int, guesses []int) {
 	// Initialize
-	player := Player{initiator: position == 0, position: position, coins: drawCoins()}
+	player := Player{id: position, initiator: position == 0, position: position, coins: drawCoins()}
 	fmt.Println(player.printPlayer())
 
 	if player.initiator {
-		player.guess = player.guessCoins(player.coins, guesses)
+		player.guess = player.guessCoins(player.coins, guesses, player.position)
 		guesses[position] = player.guess
 		// Update the overall value of coins on the table
 		guesses[len(guesses)-1] = player.coins
@@ -36,16 +36,16 @@ func routineJob(position int, channel []chan []int, guesses []int) {
 		channel[position] <- guesses
 		//close(channel[position])
 		guesses := <-channel[(position+numberOfPlayers-1)%numberOfPlayers]
-		fmt.Printf("Player %d: %v\n", player.position, guesses)
+		fmt.Printf("Player %d (pos %d): %v\n", player.id, player.position, guesses)
 		// Guesses round is over
 		var winner = findWinner(guesses)
-		fmt.Printf("Player %d: the winner is Player %d\n", player.position, winner)
+		fmt.Printf("Player %d (pos %d): the winner is Player %d\n", player.id, player.position, winner)
 	} else {
 		// Wait for message on the receiving channel
 		guesses := <-channel[(position+numberOfPlayers-1)%numberOfPlayers]
-		fmt.Printf("Player %d: %v received\n", player.position, guesses)
+		fmt.Printf("Player %d (pos %d): %v received\n", player.id, player.position, guesses)
 		// Send guesses array on the sending channel
-		player.guess = player.guessCoins(player.coins, guesses)
+		player.guess = player.guessCoins(player.coins, guesses, player.position)
 		guesses[position] = player.guess
 		// Update the overall value of coins on the table
 		guesses[len(guesses)-1] += player.coins
