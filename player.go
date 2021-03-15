@@ -20,12 +20,12 @@ func isInList(list []int, elem int) bool {
 	return false
 }
 
-func (player Player) guessCoins(myCoins int, guesses []int, position int) int {
-	maxTable := maxCoins*(numberOfPlayers-1) + myCoins
-	minTable := minCoins*(numberOfPlayers-1) + myCoins
+func (player Player) guessCoins(guesses []int, numberOfPlayers int) int {
+	maxTable := maxCoins*(numberOfPlayers-1) + player.coins
+	minTable := minCoins*(numberOfPlayers-1) + player.coins
 	for {
 		index := rand.Intn(maxTable-minTable) + minTable
-		if !isInList(guesses[:position], index) { // up to position, to avoid 0s of the initial array
+		if !isInList(guesses[:player.position], index) { // up to position, to avoid 0s of the initial array
 			return index
 		} else {
 			fmt.Printf("Player %d: %d is already in the list\n", player.position, index)
@@ -42,6 +42,10 @@ func (player Player) talk(text string) {
 	fmt.Printf(outString)
 }
 
+func (player Player) step(step int, numberOfPlayers int) {
+	player.position = (player.position + numberOfPlayers + step) % numberOfPlayers
+}
+
 func drawCoins() int {
 	return rand.Intn(maxCoins+1-minCoins) + minCoins
 }
@@ -50,7 +54,7 @@ func (player Player) printPlayer() {
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
 }
 
-func (player Player) findWinner(guesses []int) int {
+func (player Player) findWinner(guesses []int, numberOfPlayers int) int {
 	player.talk(fmt.Sprintf("guesses = %v", guesses))
 	var distance = make([]int, numberOfPlayers)
 	for i := 0; i < numberOfPlayers; i++ {
