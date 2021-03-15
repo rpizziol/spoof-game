@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"sync"
 	"time"
 )
 
@@ -24,7 +23,42 @@ const minCoins = 0
 
 // TODO close channels
 
-func routineJob(routineId int, channel []chan []int) {
+func routineJob(routineId int, routinePosition int, inputChannel <-chan []int, outputChannel chan<- []int, round int, winnerChannel chan<- int, initiatorPosition int) {
+	numberOfPlayers := totalNumberOfPlayers - round
+	player := Player{id: routineId, position: routinePosition, coins: drawCoins()}
+	player.initiator = player.position == initiatorPosition //round%numberOfPlayers
+	player.printPlayer()
+	var winner int
+	if player.initiator {
+		// The element passed between players (array of guesses + money box)
+		// (NB The last place is reserved to the real value, updated by each player)
+		var guesses = make([]int, numberOfPlayers+1)
+		player.guess = player.guessCoins(guesses, numberOfPlayers)
+		guesses[player.position] = player.guess
+		// Update the overall value of coins on the table
+		guesses[len(guesses)-1] = player.coins
+		// Pass array of guesses to the next player
+		outputChannel <- guesses
+		// Wait for the guesses list to be updated by all players
+		guesses = <-inputChannel
+		player.talk(fmt.Sprintf("%v received", guesses))
+		// Guesses round is over
+		winner = player.findWinner(guesses, numberOfPlayers)
+		player.talk(fmt.Sprintf("the winner of round %d is Player in position %d", round, winner))
+		winnerChannel <- winner
+	} else {
+		guesses := <-inputChannel
+		player.talk(fmt.Sprintf("%v received", guesses))
+		// Send guesses array on the sending channel
+		player.guess = player.guessCoins(guesses, numberOfPlayers)
+		guesses[player.position] = player.guess
+		// Update the overall value of coins on the table
+		guesses[len(guesses)-1] += player.coins
+		outputChannel <- guesses
+	}
+}
+
+/*func routineJob(routineId int, channel []chan []int) {
 	// Initialize
 	player := Player{id: routineId, position: routineId}
 	player.printPlayer()
@@ -95,12 +129,60 @@ func routineJob(routineId int, channel []chan []int) {
 			player.talk(fmt.Sprintf("I have to pay drinks for all! GAME OVER!!!"))
 		}
 	}
-}
+}*/
 
 func main() {
-	fmt.Println("Initializing Spoof Game...")
+	//fmt.Println("Initializing Spoof Game...")
 	rand.Seed(time.Now().UnixNano())
-	// Array of channels
+	var playerIds = []int{0}
+
+	// Add all remaining players to the list of ids
+	for i := 1; i < totalNumberOfPlayers; i++ {
+		playerIds = append(playerIds, i)
+	}
+
+	initiatorPosition := 0
+	for round := 0; round < totalNumberOfPlayers-1; round++ {
+		fmt.Printf("############ MASTER: ROUND %d\nPlayers in game: %v\n", round, playerIds)
+
+		numberOfPlayers := totalNumberOfPlayers - round
+		// Initialize ring channels
+		var channel = make([]chan []int, numberOfPlayers)
+		for i := range channel {
+			channel[i] = make(chan []int)
+		}
+		var winnerChannel = make(chan int)
+
+		if initiatorPosition >= numberOfPlayers {
+			initiatorPosition = 0
+		}
+
+		fmt.Printf("++++++++++ initiatorPosition = %d, round = %d\n", initiatorPosition, round)
+		// Execute a routine for each player still in game
+		for i := 0; i < numberOfPlayers; i++ {
+			go routineJob(playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i], round, winnerChannel, initiatorPosition)
+		}
+		winner := <-winnerChannel
+		fmt.Printf("############ MASTER: winner is player in position %d\n\n", winner)
+
+		j := 0
+		for i := 0; ; i++ {
+			if j == winner && playerIds[i] != -1 {
+				// Remove winner player from table
+				copy(playerIds[i:], playerIds[i+1:])
+				playerIds[len(playerIds)-1] = 0
+				playerIds = playerIds[:len(playerIds)-1]
+				break
+			} else if playerIds[i] != -1 {
+				j++
+			}
+		}
+
+		initiatorPosition++
+	}
+	fmt.Printf("############ MASTER: Player %d has to pay a drink for all!\n", playerIds[0])
+
+	/*// Array of channels
 	var channel = make([]chan []int, totalNumberOfPlayers)
 	for i := range channel { // Initialize each single channel
 		channel[i] = make(chan []int)
@@ -123,5 +205,5 @@ func main() {
 	//var round int
 	//for round = 0; round < totalNumberOfPlayers-1; round++ {
 	//	wg.Wait()
-	//}
+	//}*/
 }
