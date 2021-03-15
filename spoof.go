@@ -19,15 +19,25 @@ player to guess a number rotates clockwise to the next available player.*/
 
 const totalNumberOfPlayers = 10
 const maxCoins = 3 // Maximum number of coins per player (default: 3)
-const minCoins = 0
+const minCoins = 0 // Minimum number of coins per player (default: 0)
 
-// TODO close channels
-
-func routineJob(routineId int, routinePosition int, inputChannel <-chan []int, outputChannel chan<- []int, round int, winnerChannel chan<- int, initiatorPosition int) {
+/**
+ *
+ * @param routineId
+ * @param routinePosition
+ * @param initiatorPosition
+ * @param round
+ * @param inputChannel
+ * @param outputChannel
+ * @param winnerChannel
+ * @return
+ */
+func routineJob(routineId int, routinePosition int, initiatorPosition int, round int, inputChannel <-chan []int,
+	outputChannel chan<- []int, winnerChannel chan<- int) {
 	numberOfPlayers := totalNumberOfPlayers - round
 	player := Player{id: routineId, position: routinePosition, coins: drawCoins()}
-	player.initiator = player.position == initiatorPosition //round%numberOfPlayers
-	player.printPlayer()
+	player.initiator = player.position == initiatorPosition
+	player.talk(fmt.Sprintf("picked %d coins", player.coins))
 	var winner int
 	if player.initiator {
 		// The element passed between players (array of guesses + money box)
@@ -58,84 +68,12 @@ func routineJob(routineId int, routinePosition int, inputChannel <-chan []int, o
 	}
 }
 
-/*func routineJob(routineId int, channel []chan []int) {
-	// Initialize
-	player := Player{id: routineId, position: routineId}
-	player.printPlayer()
-
-	for round := 0; round < totalNumberOfPlayers-1; round++ {
-		var winner int
-		player.coins = drawCoins()
-		numberOfPlayers := totalNumberOfPlayers - round
-		player.talk(fmt.Sprintf("round %d", round))
-		player.initiator = player.position == (round)
-		if player.initiator {
-			player.talk(fmt.Sprintf("Initiator of round %d", round))
-		}
-		player.printPlayer()
-		if player.initiator {
-			// The element passed between players (array of guesses + money box)
-			// (NB The last place is reserved to the real value, updated by each player)
-			var guesses = make([]int, numberOfPlayers+1)
-			player.guess = player.guessCoins(guesses, numberOfPlayers)
-			guesses[player.position] = player.guess
-			// Update the overall value of coins on the table
-			guesses[len(guesses)-1] = player.coins
-			// Pass array of guesses to the next player
-			channel[player.position] <- guesses
-			guesses = <-channel[(player.position+numberOfPlayers-1)%numberOfPlayers]
-			player.talk(fmt.Sprintf("%v received", guesses))
-			// Guesses round is over
-			winner = player.findWinner(guesses, numberOfPlayers)
-			player.talk(fmt.Sprintf("the winner of round %d is Player in position %d", round, winner))
-			// Send winner to all players
-			winArray := []int{winner}
-			for i := range channel[:numberOfPlayers] {
-				if i != (player.position+numberOfPlayers-1)%numberOfPlayers && i != player.position {
-					channel[i] <- winArray
-				}
-			}
-			channel[player.position] <- winArray // Notify next initiator for last
-		} else {
-			// Wait for message on the receiving channel
-			guesses := <-channel[(player.position+numberOfPlayers-1)%numberOfPlayers]
-			player.talk(fmt.Sprintf("%v received", guesses))
-			// Send guesses array on the sending channel
-			player.guess = player.guessCoins(guesses, numberOfPlayers)
-			guesses[player.position] = player.guess
-			// Update the overall value of coins on the table
-			guesses[len(guesses)-1] += player.coins
-			channel[player.position] <- guesses
-			winArray := <-channel[(player.position+numberOfPlayers-1)%numberOfPlayers]
-			fmt.Printf("winArray = %v +++++++++++++++++++++++++++++++++\n", winArray)
-			winner = winArray[0]
-		}
-		if winner == player.position {
-			player.talk(fmt.Sprintf("I am the winner of round %d!", round))
-			//close(channel[numberOfPlayers-1])
-			return
-		} else if winner < player.position {
-			player.talk(fmt.Sprintf("The winner I received is %d. I have to step back!", winner))
-			//if winner == 0 && player.position == numberOfPlayers-1 {
-			//	player.step(1, numberOfPlayers) // Step forward
-			//} else if winner != 0 {
-			player.step(-1, numberOfPlayers-1) // Step back
-			//}
-			player.talk("I stepped back")
-		} else {
-			player.talk(fmt.Sprintf("The winner I received is %d", winner))
-		}
-		if round == totalNumberOfPlayers-2 {
-			player.talk(fmt.Sprintf("I have to pay drinks for all! GAME OVER!!!"))
-		}
-	}
-}*/
-
 func main() {
-	//fmt.Println("Initializing Spoof Game...")
+	// Initialization procedures
 	rand.Seed(time.Now().UnixNano())
-	var playerIds = []int{0}
 
+	// Create list of player ids
+	var playerIds = []int{0}
 	// Add all remaining players to the list of ids
 	for i := 1; i < totalNumberOfPlayers; i++ {
 		playerIds = append(playerIds, i)
@@ -144,66 +82,51 @@ func main() {
 	initiatorPosition := 0
 	for round := 0; round < totalNumberOfPlayers-1; round++ {
 		fmt.Printf("############ MASTER: ROUND %d\nPlayers in game: %v\n", round, playerIds)
-
 		numberOfPlayers := totalNumberOfPlayers - round
-		// Initialize ring channels
+
+		// Ring channels for communication between players
 		var channel = make([]chan []int, numberOfPlayers)
 		for i := range channel {
 			channel[i] = make(chan []int)
 		}
+
+		// Channel to communicate winner of a round to the master
 		var winnerChannel = make(chan int)
 
+		// Move the initiator to the first position in case of need
 		if initiatorPosition >= numberOfPlayers {
 			initiatorPosition = 0
 		}
 
-		fmt.Printf("++++++++++ initiatorPosition = %d, round = %d\n", initiatorPosition, round)
 		// Execute a routine for each player still in game
 		for i := 0; i < numberOfPlayers; i++ {
-			go routineJob(playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i], round, winnerChannel, initiatorPosition)
+			go routineJob(playerIds[i], i, initiatorPosition, round, channel[((i-1)+numberOfPlayers)%numberOfPlayers],
+				channel[i], winnerChannel)
 		}
+		// Receive winner from the initiator
 		winner := <-winnerChannel
 		fmt.Printf("############ MASTER: winner is player in position %d\n\n", winner)
 
-		j := 0
 		for i := 0; ; i++ {
-			if j == winner && playerIds[i] != -1 {
+			if i == winner {
 				// Remove winner player from table
 				copy(playerIds[i:], playerIds[i+1:])
-				playerIds[len(playerIds)-1] = 0
 				playerIds = playerIds[:len(playerIds)-1]
 				break
-			} else if playerIds[i] != -1 {
-				j++
 			}
 		}
-
+		closeChannels(channel)
 		initiatorPosition++
 	}
 	fmt.Printf("############ MASTER: Player %d has to pay a drink for all!\n", playerIds[0])
+}
 
-	/*// Array of channels
-	var channel = make([]chan []int, totalNumberOfPlayers)
-	for i := range channel { // Initialize each single channel
-		channel[i] = make(chan []int)
+/**
+ * Close all channels in an array of channels.
+ * @param channel	The array of channels to close.
+ */
+func closeChannels(channel []chan []int) {
+	for c := range channel {
+		close(channel[c])
 	}
-
-	// Waitgroup for "barrier" syncronization
-	var wg sync.WaitGroup
-
-	// Initialize a routine for each player
-	for i := 0; i < totalNumberOfPlayers; i++ {
-		wg.Add(1)
-		i := i
-		go func() {
-			routineJob(i, channel)
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-
-	//var round int
-	//for round = 0; round < totalNumberOfPlayers-1; round++ {
-	//	wg.Wait()
-	//}*/
 }
