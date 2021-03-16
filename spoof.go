@@ -21,10 +21,19 @@ const totalNumberOfPlayers = 10
 const maxCoins = 3 // Maximum number of coins per player (default: 3)
 const minCoins = 0 // Minimum number of coins per player (default: 0)
 
-func initiatorRoutine(round int, routineId int, routinePosition int, inChannel <-chan []int, outChannel chan<- []int,
+/**
+ * The job of the go routine if the players is initiator.
+ * @param round				The round number in the game.
+ * @param playerId			The id of the player represented by this routine.
+ * @param playerPosition	The position of the player around the table.
+ * @param inChannel			The input channel for the current routine (can only read).
+ * @param outChannel		The output channel for the current routine (can only write).
+ * @param winnerChannel		The channel used to communicate the position of the winner of the current round.
+ */
+func initiatorRoutine(round int, playerId int, playerPosition int, inChannel <-chan []int, outChannel chan<- []int,
 	winnerChannel chan<- int) {
 	numberOfPlayers := totalNumberOfPlayers - round
-	player := Player{id: routineId, position: routinePosition, coins: drawCoins(), initiator: true}
+	player := Player{id: playerId, position: playerPosition, coins: drawCoins(), initiator: true}
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
 	var winner int
 	// The element passed between players (array of guesses + money box)
@@ -45,9 +54,17 @@ func initiatorRoutine(round int, routineId int, routinePosition int, inChannel <
 	winnerChannel <- winner
 }
 
-func playerRoutine(round int, routineId int, routinePosition int, inChannel <-chan []int, outChannel chan<- []int) {
+/**
+ * The job of the go routine if the players is not an initiator (normal player).
+ * @param round				The round number in the game.
+ * @param playerId			The id of the player represented by this routine.
+ * @param playerPosition	The position of the player around the table.
+ * @param inChannel			The input channel for the current routine (can only read).
+ * @param outChannel		The output channel for the current routine (can only write).
+ */
+func playerRoutine(round int, playerId int, playerPosition int, inChannel <-chan []int, outChannel chan<- []int) {
 	numberOfPlayers := totalNumberOfPlayers - round
-	player := Player{id: routineId, position: routinePosition, coins: drawCoins(), initiator: false}
+	player := Player{id: playerId, position: playerPosition, coins: drawCoins(), initiator: false}
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
 	guesses := <-inChannel
 	player.talk(fmt.Sprintf("%v received", guesses))
