@@ -21,51 +21,42 @@ const totalNumberOfPlayers = 10
 const maxCoins = 3 // Maximum number of coins per player (default: 3)
 const minCoins = 0 // Minimum number of coins per player (default: 0)
 
-/**
- *
- * @param routineId
- * @param routinePosition
- * @param initiatorPosition
- * @param round
- * @param inputChannel
- * @param outputChannel
- * @param winnerChannel
- * @return
- */
-func routineJob(routineId int, routinePosition int, initiatorPosition int, round int, inputChannel <-chan []int,
-	outputChannel chan<- []int, winnerChannel chan<- int) {
+func initiatorRoutine(round int, routineId int, routinePosition int, inChannel <-chan []int, outChannel chan<- []int,
+	winnerChannel chan<- int) {
 	numberOfPlayers := totalNumberOfPlayers - round
-	player := Player{id: routineId, position: routinePosition, coins: drawCoins()}
-	player.initiator = player.position == initiatorPosition
+	player := Player{id: routineId, position: routinePosition, coins: drawCoins(), initiator: true}
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
 	var winner int
-	if player.initiator {
-		// The element passed between players (array of guesses + money box)
-		// (NB The last place is reserved to the real value, updated by each player)
-		var guesses = make([]int, numberOfPlayers+1)
-		player.guess = player.guessCoins(guesses, numberOfPlayers)
-		guesses[player.position] = player.guess
-		// Update the overall value of coins on the table
-		guesses[len(guesses)-1] = player.coins
-		// Pass array of guesses to the next player
-		outputChannel <- guesses
-		// Wait for the guesses list to be updated by all players
-		guesses = <-inputChannel
-		player.talk(fmt.Sprintf("%v received", guesses))
-		// Guesses round is over
-		winner = player.findWinner(guesses, numberOfPlayers)
-		player.talk(fmt.Sprintf("the winner of round %d is Player in position %d", round, winner))
-		winnerChannel <- winner
-	} else {
-		guesses := <-inputChannel
-		player.talk(fmt.Sprintf("%v received", guesses))
-		// Send guesses array on the sending channel
-		player.guess = player.guessCoins(guesses, numberOfPlayers)
-		guesses[player.position] = player.guess
-		// Update the overall value of coins on the table
-		guesses[len(guesses)-1] += player.coins
-		outputChannel <- guesses
-	}
+	// The element passed between players (array of guesses + money box)
+	// (NB The last place is reserved to the real value, updated by each player)
+	var guesses = make([]int, numberOfPlayers+1)
+	player.guess = player.guessCoins(guesses, numberOfPlayers)
+	guesses[player.position] = player.guess
+	// Update the overall value of coins on the table
+	guesses[len(guesses)-1] = player.coins
+	// Pass array of guesses to the next player
+	outChannel <- guesses
+	// Wait for the guesses list to be updated by all players
+	guesses = <-inChannel
+	player.talk(fmt.Sprintf("%v received", guesses))
+	// Guesses round is over
+	winner = player.findWinner(guesses, numberOfPlayers)
+	player.talk(fmt.Sprintf("the winner of round %d is Player in position %d", round, winner))
+	winnerChannel <- winner
+}
+
+func playerRoutine(round int, routineId int, routinePosition int, inChannel <-chan []int, outChannel chan<- []int) {
+	numberOfPlayers := totalNumberOfPlayers - round
+	player := Player{id: routineId, position: routinePosition, coins: drawCoins(), initiator: false}
+	player.talk(fmt.Sprintf("picked %d coins", player.coins))
+	guesses := <-inChannel
+	player.talk(fmt.Sprintf("%v received", guesses))
+	// Send guesses array on the sending channel
+	player.guess = player.guessCoins(guesses, numberOfPlayers)
+	guesses[player.position] = player.guess
+	// Update the overall value of coins on the table
+	guesses[len(guesses)-1] += player.coins
+	outChannel <- guesses
 }
 
 func main() {
@@ -100,8 +91,12 @@ func main() {
 
 		// Execute a routine for each player still in game
 		for i := 0; i < numberOfPlayers; i++ {
-			go routineJob(playerIds[i], i, initiatorPosition, round, channel[((i-1)+numberOfPlayers)%numberOfPlayers],
-				channel[i], winnerChannel)
+			if i == initiatorPosition {
+				go initiatorRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i],
+					winnerChannel)
+			} else {
+				go playerRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i])
+			}
 		}
 		// Receive winner from the initiator
 		winner := <-winnerChannel
