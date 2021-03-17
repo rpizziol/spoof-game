@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -29,9 +30,10 @@ const minCoins = 0 // Minimum number of coins per player (default: 0)
  * @param inChannel			The input channel for the current routine (can only read).
  * @param outChannel		The output channel for the current routine (can only write).
  * @param winnerChannel		The channel used to communicate the position of the winner of the current round.
+ * @param wg				The WaitGroup of the ongoing round.
  */
 func initiatorRoutine(round int, playerId int, playerPosition int, inChannel <-chan []int, outChannel chan<- []int,
-	winnerChannel chan<- int) {
+	winnerChannel chan<- int, wg *sync.WaitGroup) {
 	numberOfPlayers := totalNumberOfPlayers - round
 	player := Player{id: playerId, position: playerPosition, coins: drawCoins(), initiator: true}
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
@@ -52,6 +54,7 @@ func initiatorRoutine(round int, playerId int, playerPosition int, inChannel <-c
 	winner = player.findWinner(guesses, numberOfPlayers)
 	player.talk(fmt.Sprintf("the winner of round %d is Player in position %d", round, winner))
 	winnerChannel <- winner
+	wg.Done()
 }
 
 /**
@@ -61,8 +64,10 @@ func initiatorRoutine(round int, playerId int, playerPosition int, inChannel <-c
  * @param playerPosition	The position of the player around the table.
  * @param inChannel			The input channel for the current routine (can only read).
  * @param outChannel		The output channel for the current routine (can only write).
+ * @param wg				The WaitGroup of the ongoing round.
  */
-func playerRoutine(round int, playerId int, playerPosition int, inChannel <-chan []int, outChannel chan<- []int) {
+func playerRoutine(round int, playerId int, playerPosition int, inChannel <-chan []int, outChannel chan<- []int,
+	wg *sync.WaitGroup) {
 	numberOfPlayers := totalNumberOfPlayers - round
 	player := Player{id: playerId, position: playerPosition, coins: drawCoins(), initiator: false}
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
@@ -74,6 +79,7 @@ func playerRoutine(round int, playerId int, playerPosition int, inChannel <-chan
 	// Update the overall value of coins on the table
 	guesses[len(guesses)-1] += player.coins
 	outChannel <- guesses
+	wg.Done()
 }
 
 func main() {
@@ -106,19 +112,21 @@ func main() {
 			initiatorPosition = 0
 		}
 
+		var wg sync.WaitGroup
 		// Execute a routine for each player still in game
 		for i := 0; i < numberOfPlayers; i++ {
+			wg.Add(1)
 			if i == initiatorPosition {
 				go initiatorRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i],
-					winnerChannel)
+					winnerChannel, &wg)
 			} else {
-				go playerRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i])
+				go playerRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i], &wg)
 			}
 		}
 		// Receive winner from the initiator
 		winner := <-winnerChannel
 		fmt.Printf("############ MASTER: winner is player in position %d\n\n", winner)
-
+		wg.Wait()
 		for i := 0; ; i++ {
 			if i == winner {
 				// Remove winner player from table
