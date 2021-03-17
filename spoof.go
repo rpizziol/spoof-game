@@ -33,25 +33,29 @@ const minCoins = 0 // Minimum number of coins per player (default: 0)
  * @param wg				The WaitGroup of the ongoing round.
  */
 func initiatorRoutine(round int, playerId int, playerPosition int, inChannel <-chan []int, outChannel chan<- []int,
-	winnerChannel chan<- int, wg *sync.WaitGroup) {
+	winnerChannel chan<- int, wg *sync.WaitGroup, m *sync.Mutex, moneyBox *int) {
 	numberOfPlayers := totalNumberOfPlayers - round
 	player := Player{id: playerId, position: playerPosition, coins: drawCoins(), initiator: true}
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
+	m.Lock()
+	*moneyBox += player.coins // Update overall value of coins on the table
+	m.Unlock()
 	var winner int
 	// The element passed between players (array of guesses + money box)
 	// (NB The last place is reserved to the real value, updated by each player)
-	var guesses = make([]int, numberOfPlayers+1)
+	var guesses = make([]int, numberOfPlayers)
 	player.guess = player.guessCoins(guesses, numberOfPlayers)
 	guesses[player.position] = player.guess
 	// Update the overall value of coins on the table
-	guesses[len(guesses)-1] = player.coins
+	// guesses[len(guesses)-1] = player.coins
 	// Pass array of guesses to the next player
 	outChannel <- guesses
 	// Wait for the guesses list to be updated by all players
 	guesses = <-inChannel
 	player.talk(fmt.Sprintf("%v received", guesses))
 	// Guesses round is over
-	winner = player.findWinner(guesses, numberOfPlayers)
+	player.talk(fmt.Sprintf("moneyBox = %d", *moneyBox))
+	winner = player.findWinner(guesses, numberOfPlayers, *moneyBox)
 	player.talk(fmt.Sprintf("the winner of round %d is Player in position %d", round, winner))
 	winnerChannel <- winner
 	wg.Done()
@@ -67,17 +71,20 @@ func initiatorRoutine(round int, playerId int, playerPosition int, inChannel <-c
  * @param wg				The WaitGroup of the ongoing round.
  */
 func playerRoutine(round int, playerId int, playerPosition int, inChannel <-chan []int, outChannel chan<- []int,
-	wg *sync.WaitGroup) {
+	wg *sync.WaitGroup, m *sync.Mutex, moneyBox *int) {
 	numberOfPlayers := totalNumberOfPlayers - round
 	player := Player{id: playerId, position: playerPosition, coins: drawCoins(), initiator: false}
 	player.talk(fmt.Sprintf("picked %d coins", player.coins))
+	m.Lock()
+	*moneyBox += player.coins // Update overall value of coins on the table
+	m.Unlock()
 	guesses := <-inChannel
 	player.talk(fmt.Sprintf("%v received", guesses))
 	// Send guesses array on the sending channel
 	player.guess = player.guessCoins(guesses, numberOfPlayers)
 	guesses[player.position] = player.guess
 	// Update the overall value of coins on the table
-	guesses[len(guesses)-1] += player.coins
+	// guesses[len(guesses)-1] += player.coins
 	outChannel <- guesses
 	wg.Done()
 }
@@ -97,6 +104,7 @@ func main() {
 	for round := 0; round < totalNumberOfPlayers-1; round++ {
 		fmt.Printf("############ MASTER: ROUND %d\nPlayers in game: %v\n", round, playerIds)
 		numberOfPlayers := totalNumberOfPlayers - round
+		moneyBox := 0
 
 		// Ring channels for communication between players
 		var channel = make([]chan []int, numberOfPlayers)
@@ -113,14 +121,16 @@ func main() {
 		}
 
 		var wg sync.WaitGroup
+		var m sync.Mutex
 		// Execute a routine for each player still in game
 		for i := 0; i < numberOfPlayers; i++ {
 			wg.Add(1)
 			if i == initiatorPosition {
 				go initiatorRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i],
-					winnerChannel, &wg)
+					winnerChannel, &wg, &m, &moneyBox)
 			} else {
-				go playerRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i], &wg)
+				go playerRoutine(round, playerIds[i], i, channel[((i-1)+numberOfPlayers)%numberOfPlayers], channel[i],
+					&wg, &m, &moneyBox)
 			}
 		}
 		// Receive winner from the initiator

@@ -63,13 +63,15 @@ func drawCoins() int {
  * Find the winner of the round.
  * @param guesses			The array of guesses ordered by position of the players.
  * @param numberOfPlayers	The number of players currently playing.
+ * @param moneyBox			The real total value of coins on the table.
  * @return					The position of the winner of the round.
  */
-func (player Player) findWinner(guesses []int, numberOfPlayers int) int {
+func (player Player) findWinner(guesses []int, numberOfPlayers int, moneyBox int) int {
 	player.talk(fmt.Sprintf("guesses = %v", guesses))
 	var distance = make([]int, numberOfPlayers)
 	for i := 0; i < numberOfPlayers; i++ {
-		distance[i] = util.Abs(guesses[len(guesses)-1] - guesses[i])
+		distance[i] = util.Abs(moneyBox - guesses[i])
+		//distance[i] = util.Abs(guesses[len(guesses)-1] - guesses[i])
 	}
 	player.talk(fmt.Sprintf("distance = %v", distance))
 	var winner = 0
