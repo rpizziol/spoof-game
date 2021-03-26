@@ -20,7 +20,9 @@ git clone https://github.com/rpizziol/spoof-game.git
 
 
 ## Usage
-* Run the Go project (`go run .`)
+1. Make sure you are in the project directory with no other file but the ones obtained through the git repository
+
+2. Run the Go project (`go run .`)
 
 ## Authors
 
